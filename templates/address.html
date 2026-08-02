@@ -7,8 +7,8 @@
 %% if let Some(inscriptions) = self.inscriptions.as_ref().filter(|inscriptions| !inscriptions.is_empty()) {
   <dt>inscriptions</dt>
   <dd class=thumbnails>
-%% for inscription in inscriptions {
-    {{Iframe::thumbnail(*inscription)}}
+%% for (inscription, media) in inscriptions {
+    {{Iframe::thumbnail(*inscription, *media)}}
 %% }
   </dd>
 %% }

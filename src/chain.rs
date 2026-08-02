@@ -38,8 +38,11 @@ impl Chain {
 
   pub(crate) fn inscription_content_size_limit(self) -> Option<usize> {
     match self {
-      Self::Mainnet | Self::Regtest => None,
-      Self::Testnet | Self::Testnet4 | Self::Signet => Some(1024),
+      // Testnet4 limit lifted locally: in practice everyone bypasses the 1KB
+      // cap on testnet4, so it no longer functions as spam protection — and
+      // we need real-size inscriptions to dry-run MoBA galleries publicly.
+      Self::Mainnet | Self::Regtest | Self::Testnet4 => None,
+      Self::Testnet | Self::Signet => Some(1024),
     }
   }
 

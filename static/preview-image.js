@@ -1,15 +1,18 @@
+if (window !== window.top) {
+  document.documentElement.style.backgroundColor = 'transparent';
+}
+
 function resize() {
   if (
-    body.clientWidth * window.devicePixelRatio < img.naturalWidth
-    || body.clientHeight * window.devicePixelRatio < img.naturalHeight
+    img.clientWidth * window.devicePixelRatio < img.naturalWidth
+    || img.clientHeight * window.devicePixelRatio < img.naturalHeight
   ) {
-    body.style.imageRendering = 'auto';
+    img.style.imageRendering = 'auto';
   } else {
-    body.removeAttribute('style');
+    img.removeAttribute('style');
   }
 }
 
-let body = document.body;
 let img = document.getElementsByTagName('img')[0];
 
-(new ResizeObserver(resize)).observe(body);
+(new ResizeObserver(resize)).observe(document.body);

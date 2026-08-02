@@ -567,6 +567,7 @@ fn get_blocks() {
         .take(5)
         .map(|block_hash| (block_hash, Vec::new()))
         .collect(),
+      featured_medias: BTreeMap::new(),
     }
   );
 }
@@ -591,6 +592,7 @@ fn get_transaction() {
       chain: Chain::Mainnet,
       etching: None,
       inscription_count: 0,
+      inscription_medias: Vec::new(),
       transaction,
       txid,
     }
@@ -697,6 +699,7 @@ fn get_runes() {
         txid: a.output.reveal,
         index: 0,
       }),
+      parent_media: None,
     }
   );
 

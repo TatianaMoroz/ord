@@ -2949,6 +2949,7 @@ inscriptions:
     ItemHtml {
       gallery_id: gallery,
       gallery_number: -1,
+      gallery_title: None,
       i: 0,
       item: Item {
         id: Some(id0),
@@ -2960,6 +2961,7 @@ inscriptions:
         },
         index: None,
       },
+      total: 2,
     },
   );
 
@@ -2969,6 +2971,7 @@ inscriptions:
     ItemHtml {
       gallery_id: gallery,
       gallery_number: -1,
+      gallery_title: None,
       i: 1,
       item: Item {
         id: Some(id1),
@@ -2980,6 +2983,7 @@ inscriptions:
         },
         index: None,
       },
+      total: 2,
     },
   );
 

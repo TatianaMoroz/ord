@@ -1,14 +1,37 @@
-<h1>Gallery {{ self.gallery_number }} Item {{ self.i }}</h1>
 %% if let Some(title) = &self.item.attributes.title {
-<p class=subtitle>{{ title }}</p>
+<h1>{{ title }}</h1>
+%% } else {
+<h1>Gallery {{ self.gallery_number }} Item {{ self.i }}</h1>
 %% }
-<div class=inscription>
+<div class=subtitle-row>
+%% if self.item.attributes.title.is_some() {
+  <p class=subtitle><a href=/inscription/{{ self.gallery_id }}>
+%% if let Some(gallery_title) = &self.gallery_title {
+{{ gallery_title }}
+%% } else {
+Gallery {{ self.gallery_number }}
+%% }
+</a> / Item {{ self.i }}</p>
+%% }
+  <div class=title-links data-ord-path=/inscription/{{ self.item.id() }}></div>
+</div>
+<div class="inscription gallery-item-nav">
+%% if self.i > 0 {
+<a class=prev href=/gallery/{{self.gallery_id}}/{{self.i - 1}}>❮</a>
+%% } else {
+<div>❮</div>
+%% }
 {{ Iframe::main(self.item.id()) }}
+%% if self.i + 1 < self.total {
+<a class=next href=/gallery/{{self.gallery_id}}/{{self.i + 1}}>❯</a>
+%% } else {
+<div>❯</div>
+%% }
 </div>
 <dl>
   <dt>inscription</dt>
-  <dd><a href=/inscription/{{ self.item.id() }}>{{ self.item.id() }}</a></dd>
+  <dd><a class=collapse href=/inscription/{{ self.item.id() }}>{{ self.item.id() }}</a></dd>
   <dt>gallery</dt>
-  <dd><a href=/inscription/{{ self.gallery_id }}>{{ self.gallery_id }}</a></dd>
+  <dd><a class=collapse href=/inscription/{{ self.gallery_id }}>{{ self.gallery_id }}</a></dd>
   {{ Trusted(AttributesHtml(&self.item.attributes)) }}
 </dl>

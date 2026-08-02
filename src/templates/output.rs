@@ -4,7 +4,7 @@ use super::*;
 pub(crate) struct OutputHtml {
   pub(crate) chain: Chain,
   pub(crate) confirmations: u32,
-  pub(crate) inscriptions: Option<Vec<InscriptionId>>,
+  pub(crate) inscriptions: Option<Vec<(InscriptionId, Option<Media>)>>,
   pub(crate) outpoint: OutPoint,
   pub(crate) output: TxOut,
   pub(crate) runes: Option<BTreeMap<SpacedRune, Pile>>,
@@ -156,7 +156,7 @@ mod tests {
       OutputHtml {
         chain: Chain::Mainnet,
         confirmations: 6,
-        inscriptions: Some(vec![inscription_id(1)]),
+        inscriptions: Some(vec![(inscription_id(1), None)]),
         outpoint: outpoint(1),
         output: TxOut {
           value: Amount::from_sat(3),

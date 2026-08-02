@@ -3,7 +3,7 @@
 <h2>Inscription Geneses</h2>
 <div class=thumbnails>
 %% for index in 0..self.inscription_count {
-{{ Iframe::thumbnail(InscriptionId { txid: self.txid, index }) }}
+{{ Iframe::thumbnail(InscriptionId { txid: self.txid, index }, self.inscription_medias.get(index as usize).copied().flatten()) }}
 %% }
 </div>
 %% }

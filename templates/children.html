@@ -3,8 +3,8 @@
 <h3>No children</h3>
 %% } else {
 <div class=thumbnails>
-%% for id in &self.children {
-  {{ Iframe::thumbnail(*id) }}
+%% for (id, media) in &self.children {
+  {{ Iframe::thumbnail(*id, *media) }}
 %% }
 </div>
 <div class=center>

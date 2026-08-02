@@ -2,28 +2,32 @@
 <html lang=en>
   <head>
     <meta charset=utf-8>
+    <meta name=viewport content='width=device-width,initial-scale=1.0'>
     <meta name=format-detection content='telephone=no'>
     <title>Inscription {{self.inscription_number}} Preview</title>
     <style>
       html {
-        background-color: #131516;
+        /* Transparent so the iframe blends with whatever the embedding
+           page's background is — any unfilled space (top/bottom or
+           left/right when the inscription isn't square) used to show
+           through as a dark band against light-themed parent pages. */
+        background-color: transparent;
         height: 100%;
       }
 
       body {
-        background-image: url(/content/{{self.inscription_id}});
-        background-position: center;
-        background-repeat: no-repeat;
-        background-size: contain;
         height: 100%;
-        image-rendering: {{ self.image_rendering }};
         margin: 0;
       }
 
+      /* Render via the img element, not a body background-image: iOS
+         Safari ignores image-rendering on scaled background images but
+         honors it on img elements. */
       img {
-        float: left;
+        display: block;
         height: 100%;
-        opacity: 0;
+        image-rendering: {{ self.image_rendering }};
+        object-fit: contain;
         width: 100%;
       }
     </style>

@@ -2,7 +2,7 @@ use super::*;
 
 #[derive(Boilerplate)]
 pub(crate) struct CollectionsHtml {
-  pub(crate) inscriptions: Vec<InscriptionId>,
+  pub(crate) inscriptions: Vec<(InscriptionId, Option<Media>)>,
   pub(crate) prev: Option<usize>,
   pub(crate) next: Option<usize>,
 }
@@ -21,7 +21,7 @@ mod tests {
   fn without_prev_and_next() {
     assert_regex_match!(
       CollectionsHtml {
-        inscriptions: vec![inscription_id(1), inscription_id(2)],
+        inscriptions: vec![(inscription_id(1), None), (inscription_id(2), None)],
         prev: None,
         next: None,
       },
@@ -44,7 +44,7 @@ mod tests {
   fn with_prev_and_next() {
     assert_regex_match!(
       CollectionsHtml {
-        inscriptions: vec![inscription_id(1), inscription_id(2)],
+        inscriptions: vec![(inscription_id(1), None), (inscription_id(2), None)],
         prev: Some(1),
         next: Some(2),
       },

@@ -12,28 +12,32 @@
 $$ Trusted(self.oembed_link())
     <link rel=icon href=/static/favicon.png>
     <link rel=icon href=/static/favicon.svg>
+    <script src=/static/theme-init.js></script>
     <link rel=stylesheet href=/static/index.css>
     <link rel=stylesheet href=/static/modern-normalize.css>
+    <script src=/static/marketplaces.js></script>
     <script src=/static/index.js></script>
     <script src=/static/inscription-embed.js defer></script>
   </head>
   <body>
   <header>
     <nav>
-      <a href=/ title=home>Ordinals<sup>{{ self.superscript() }}</sup></a>
+      <a href=/ title=home>{{ self.home_text() }}<sup>{{ self.superscript() }}</sup></a>
       <a href=/inscriptions title=inscriptions><img class=icon src=/static/images.svg></a>
       <a href=/runes title=runes><img class=icon src=/static/rune.svg></a>
       <a href=/collections title=collections><img class=icon src=/static/diagram-project.svg></a>
       <a href=/galleries title=galleries><img class=icon src=/static/box-archive.svg></a>
       <a href=/blocks title=blocks><img class=icon src=/static/cubes.svg></a>
       <a href=/clock title=clock><img class=icon src=/static/clock.svg></a>
-      <a href=https://testnet.ordinals.gallery/ title=testnet><img class=icon src=/static/wand.svg></a>
 %% if self.config.index_sats {
       <a href=/rare.txt title=rare><img class=icon src=/static/gem.svg></a>
 %% }
       <a href=https://docs.ordinals.com/ title=handbook><img class=icon src=/static/book.svg></a>
       <a href=https://github.com/ordinals/ord title=github><img class=icon src=/static/github.svg></a>
       <a href=https://discord.com/invite/ordinals title=discord><img class=icon src=/static/discord.svg></a>
+      <a href=https://testnet.ordinals.gallery/ title=testnet><img class=icon src=/static/wand.svg></a>
+      <a href=/museum title=museum><img class=icon src=/static/museum.svg></a>
+      <button id=theme-toggle type=button class=nav-button title='switch theme' aria-label='switch theme'><img class=icon src=/static/theme.svg></button>
       <form action=/search method=get>
         <input type=text autocapitalize=off autocomplete=off autocorrect=off name=query spellcheck=false>
         <input class=icon type=image src=/static/magnifying-glass.svg alt=Search>

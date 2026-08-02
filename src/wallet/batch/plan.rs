@@ -696,7 +696,9 @@ impl Plan {
         range: None,
         next_index: None,
         internal: Some(false),
-        label: Some("commit tx recovery key".to_string()),
+        // Bitcoin Core v30+ rejects labels on inactive descriptors with
+        // `Internal addresses should not have a label` (-8). Drop the label.
+        label: None,
       })?;
 
     for result in response {

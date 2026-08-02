@@ -5,6 +5,8 @@ pub struct TransactionHtml {
   pub chain: Chain,
   pub etching: Option<SpacedRune>,
   pub inscription_count: u32,
+  #[serde(skip)]
+  pub inscription_medias: Vec<Option<Media>>,
   pub transaction: Transaction,
   pub txid: Txid,
 }
@@ -49,6 +51,7 @@ mod tests {
         chain: Chain::Mainnet,
         etching: None,
         inscription_count: 0,
+        inscription_medias: Vec::new(),
         txid: transaction.compute_txid(),
         transaction,
       }.to_string(),

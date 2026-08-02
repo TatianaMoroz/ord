@@ -1,17 +1,29 @@
 <h1>All Inscriptions</h1>
+<form class=inscriptions-toolbar action=/inscriptions method=get>
+  <label class="toolbar-btn cursed-toggle" title="show cursed only">
+    <input type=checkbox name=cursed value=1{{self.cursed_checked()}}>
+    <img class=icon src=/static/skull.svg>
+  </label>
+  <label class=toolbar-select>
+    <select name=sort>
+      <option value=newest{{self.selected_if(Sort::Newest)}}>Recently Inscribed</option>
+      <option value=oldest{{self.selected_if(Sort::Oldest)}}>Earliest Inscribed</option>
+    </select>
+  </label>
+</form>
 <div class=thumbnails>
-%% for id in &self.inscriptions {
-  {{Iframe::thumbnail(*id)}}
+%% for (id, media) in &self.inscriptions {
+  {{Iframe::thumbnail(*id, *media)}}
 %% }
 </div>
 <div class=center>
 %% if let Some(prev) = self.prev {
-<a class=prev href=/inscriptions/{{prev}}>prev</a>
+<a class=prev href=/inscriptions/{{prev}}{{self.query_string()}}>prev</a>
 %% } else {
 prev
 %% }
 %% if let Some(next) = self.next {
-<a class=next href=/inscriptions/{{next}}>next</a>
+<a class=next href=/inscriptions/{{next}}{{self.query_string()}}>next</a>
 %% } else {
 next
 %% }

@@ -8,13 +8,14 @@ pub(crate) use {
   children::ChildrenHtml,
   clock::ClockSvg,
   collections::CollectionsHtml,
+  coming_soon::ComingSoonHtml,
   embed::{EmbedAudioHtml, EmbedImageHtml, EmbedUnknownHtml, EmbedVideoHtml},
   galleries::GalleriesHtml,
   gallery::GalleryHtml,
   home::HomeHtml,
   iframe::Iframe,
   input::InputHtml,
-  inscriptions::InscriptionsHtml,
+  inscriptions::{InscriptionsHtml, Sort as InscriptionsSort},
   inscriptions_block::InscriptionsBlockHtml,
   metadata::MetadataHtml,
   output::OutputHtml,
@@ -30,8 +31,13 @@ pub(crate) use {
 };
 
 pub use {
-  blocks::BlocksHtml, inscription::InscriptionHtml, item::ItemHtml, rune::RuneHtml,
-  runes::RunesHtml, status::StatusHtml, transaction::TransactionHtml,
+  blocks::BlocksHtml,
+  inscription::{text_title, Crumb, InscriptionHtml, SatInscription},
+  item::ItemHtml,
+  rune::RuneHtml,
+  runes::RunesHtml,
+  status::StatusHtml,
+  transaction::TransactionHtml,
 };
 
 pub mod address;
@@ -41,6 +47,7 @@ pub mod blocks;
 mod children;
 mod clock;
 pub mod collections;
+mod coming_soon;
 mod embed;
 mod galleries;
 mod gallery;
@@ -79,11 +86,7 @@ where
   }
 
   fn og_image(&self) -> String {
-    if let Some(domain) = &self.config.domain {
-      format!("https://{domain}/static/favicon.png")
-    } else {
-      "https://ordinals.com/static/favicon.png".into()
-    }
+    format!("{}/static/favicon.png", self.page_origin())
   }
 
   fn page_origin(&self) -> String {
@@ -107,9 +110,17 @@ where
     )
   }
 
+  fn home_text(&self) -> &'static str {
+    if self.config.chain == Chain::Mainnet {
+      "Ordinals"
+    } else {
+      "Ordinals.Gallery"
+    }
+  }
+
   fn superscript(&self) -> String {
     if self.config.chain == Chain::Mainnet {
-      "beta".into()
+      "Gallery".into()
     } else {
       self.config.chain.to_string()
     }
@@ -173,15 +184,17 @@ mod tests {
 \s*
     <link rel=icon href=/static/favicon.png>
     <link rel=icon href=/static/favicon.svg>
+    <script src=/static/theme-init.js></script>
     <link rel=stylesheet href=/static/index.css>
     <link rel=stylesheet href=/static/modern-normalize.css>
+    <script src=/static/marketplaces.js></script>
     <script src=/static/index.js></script>
     <script src=/static/inscription-embed.js defer></script>
   </head>
   <body>
   <header>
     <nav>
-      <a href=/ title=home>Ordinals<sup>beta</sup></a>
+      <a href=/ title=home>Ordinals<sup>Gallery</sup></a>
       .*
       <a href=/clock title=clock>.*</a>
       <a href=/rare.txt title=rare>.*</a>
@@ -211,7 +224,7 @@ mod tests {
         index_sats: true,
         ..default()
       })),
-      r".*<nav>\s*<a href=/ title=home>Ordinals<sup>beta</sup></a>.*"
+      r".*<nav>\s*<a href=/ title=home>Ordinals<sup>Gallery</sup></a>.*"
     );
   }
 
@@ -225,7 +238,7 @@ mod tests {
         index_sats: false,
         ..default()
       })),
-      r".*<nav>\s*<a href=/ title=home>Ordinals<sup>beta</sup></a>.*<a href=/clock title=clock>.*</a>\s*<form action=/search.*",
+      r".*<nav>\s*<a href=/ title=home>Ordinals<sup>Gallery</sup></a>.*<a href=/clock title=clock>.*</a>.*<form action=/search.*",
     );
   }
 
@@ -239,7 +252,33 @@ mod tests {
         index_sats: true,
         ..default()
       })),
-      r".*<nav>\s*<a href=/ title=home>Ordinals<sup>signet</sup></a>.*"
+      r".*<nav>\s*<a href=/ title=home>Ordinals\.Gallery<sup>signet</sup></a>.*"
+    );
+  }
+
+  #[test]
+  fn og_image_prefers_csp_origin_over_domain() {
+    assert_regex_match!(
+      Foo.page(Arc::new(ServerConfig {
+        chain: Chain::Mainnet,
+        csp_origin: Some("https://ordinals.gallery".into()),
+        domain: Some("some-laptop.local".into()),
+        ..default()
+      })),
+      r".*<meta property=og:image content='https://ordinals\.gallery/static/favicon\.png'>.*"
+    );
+  }
+
+  #[test]
+  fn og_image_falls_back_to_ordinals_com() {
+    assert_regex_match!(
+      Foo.page(Arc::new(ServerConfig {
+        chain: Chain::Mainnet,
+        csp_origin: None,
+        domain: None,
+        ..default()
+      })),
+      r".*<meta property=og:image content='https://ordinals\.com/static/favicon\.png'>.*"
     );
   }
 }

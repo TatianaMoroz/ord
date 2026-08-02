@@ -5,8 +5,8 @@
 <div class=block>
   <h2><a href=/block/{{ height }}>Block {{ height }}</a></h2>
   <div class=thumbnails>
-%%     for id in *inscription_ids {
-    {{ Iframe::thumbnail(*id) }}
+%%     for (j, id) in inscription_ids.iter().enumerate() {
+    {{ Iframe::thumbnail(*id, self.featured_medias.get(hash).and_then(|medias| medias.get(j)).copied().flatten()) }}
 %%     }
   </div>
 </div>

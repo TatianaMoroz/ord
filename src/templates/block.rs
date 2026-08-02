@@ -4,7 +4,7 @@ use super::*;
 pub(crate) struct BlockHtml {
   best_height: Height,
   block: Block,
-  featured_inscriptions: Vec<InscriptionId>,
+  featured_inscriptions: Vec<(InscriptionId, Option<Media>)>,
   hash: BlockHash,
   height: Height,
   inscription_count: usize,
@@ -18,7 +18,7 @@ impl BlockHtml {
     height: Height,
     best_height: Height,
     inscription_count: usize,
-    featured_inscriptions: Vec<InscriptionId>,
+    featured_inscriptions: Vec<(InscriptionId, Option<Media>)>,
     runes: Vec<SpacedRune>,
   ) -> Self {
     Self {

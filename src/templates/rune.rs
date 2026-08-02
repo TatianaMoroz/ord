@@ -6,6 +6,8 @@ pub struct RuneHtml {
   pub id: RuneId,
   pub mintable: bool,
   pub parent: Option<InscriptionId>,
+  #[serde(skip)]
+  pub parent_media: Option<Media>,
 }
 
 impl RuneHtml {
@@ -72,6 +74,7 @@ mod tests {
           txid: Txid::all_zeros(),
           index: 0,
         }),
+        parent_media: None,
       },
       "<h1>B•CGDENLQRQWDSLRUGSNLBTMFIJAV</h1>
 .*<a href=/inscription/.*<iframe .* src=/preview/0{64}i0\\?thumb=1></iframe></a>.*
@@ -154,6 +157,7 @@ mod tests {
         id: RuneId { block: 10, tx: 9 },
         mintable: false,
         parent: None,
+        parent_media: None,
       },
       "<h1>B•CGDENLQRQWDSLRUGSNLBTMFIJAV</h1>
 <dl>.*
@@ -188,6 +192,7 @@ mod tests {
         id: RuneId { block: 10, tx: 9 },
         mintable: false,
         parent: None,
+        parent_media: None,
       },
       "<h1>B•CGDENLQRQWDSLRUGSNLBTMFIJAV</h1>
 <dl>.*
@@ -227,6 +232,7 @@ mod tests {
         id: RuneId { block: 10, tx: 9 },
         mintable: false,
         parent: None,
+        parent_media: None,
       },
       "<h1>B•CGDENLQRQWDSLRUGSNLBTMFIJAV</h1>
 <dl>.*
@@ -286,6 +292,7 @@ mod tests {
           txid: Txid::all_zeros(),
           index: 0,
         }),
+        parent_media: None,
       },
       ".*
       <dt>mintable</dt>
@@ -323,6 +330,7 @@ mod tests {
           txid: Txid::all_zeros(),
           index: 0,
         }),
+        parent_media: None,
       },
       ".*
       <dt>mintable</dt>

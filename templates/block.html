@@ -31,8 +31,8 @@ next
 %% }
 <h2>{{"Inscription".tally(self.inscription_count)}}</h2>
 <div class=thumbnails>
-%% for id in &self.featured_inscriptions {
-    {{ Iframe::thumbnail(*id) }}
+%% for (id, media) in &self.featured_inscriptions {
+    {{ Iframe::thumbnail(*id, *media) }}
 %% }
 </div>
 %% if &self.inscription_count > &self.featured_inscriptions.len() {

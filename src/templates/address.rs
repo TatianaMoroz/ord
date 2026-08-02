@@ -4,7 +4,7 @@ use super::*;
 pub(crate) struct AddressHtml {
   pub(crate) address: Address,
   pub(crate) header: bool,
-  pub(crate) inscriptions: Option<Vec<InscriptionId>>,
+  pub(crate) inscriptions: Option<Vec<(InscriptionId, Option<Media>)>>,
   pub(crate) outputs: Vec<OutPoint>,
   pub(crate) runes_balances: Option<Vec<(SpacedRune, Decimal, Option<char>)>>,
   pub(crate) sat_balance: u64,
@@ -28,7 +28,7 @@ mod tests {
         .unwrap(),
       header: true,
       outputs: vec![outpoint(1), outpoint(2)],
-      inscriptions: Some(vec![inscription_id(1)]),
+      inscriptions: Some(vec![(inscription_id(1), None)]),
       sat_balance: 99,
       runes_balances: Some(vec![
         (

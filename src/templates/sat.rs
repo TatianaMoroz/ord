@@ -4,7 +4,7 @@ use super::*;
 pub(crate) struct SatHtml {
   pub(crate) address: Option<Address>,
   pub(crate) blocktime: Blocktime,
-  pub(crate) inscriptions: Vec<InscriptionId>,
+  pub(crate) inscriptions: Vec<(InscriptionId, Option<Media>)>,
   pub(crate) sat: Sat,
   pub(crate) satpoint: Option<SatPoint>,
 }
@@ -119,7 +119,7 @@ mod tests {
         sat: Sat(0),
         satpoint: None,
         blocktime: Blocktime::confirmed(0),
-        inscriptions: vec![inscription_id(1)],
+        inscriptions: vec![(inscription_id(1), None)],
       },
       "
         <h1>Sat 0</h1>
@@ -141,7 +141,7 @@ mod tests {
         sat: Sat(0),
         satpoint: None,
         blocktime: Blocktime::confirmed(0),
-        inscriptions: vec![inscription_id(1), inscription_id(2)],
+        inscriptions: vec![(inscription_id(1), None), (inscription_id(2), None)],
       },
       "
         <h1>Sat 0</h1>

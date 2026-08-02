@@ -2,7 +2,7 @@ use super::*;
 
 #[derive(Boilerplate)]
 pub(crate) struct GalleriesHtml {
-  pub(crate) inscriptions: Vec<InscriptionId>,
+  pub(crate) inscriptions: Vec<(InscriptionId, Option<Media>)>,
   pub(crate) prev: Option<u32>,
   pub(crate) next: Option<u32>,
 }
@@ -21,7 +21,7 @@ mod tests {
   fn without_prev_and_next() {
     assert_regex_match!(
       GalleriesHtml {
-        inscriptions: vec![inscription_id(1), inscription_id(2)],
+        inscriptions: vec![(inscription_id(1), None), (inscription_id(2), None)],
         prev: None,
         next: None,
       },
@@ -44,7 +44,7 @@ mod tests {
   fn with_prev_and_next() {
     assert_regex_match!(
       GalleriesHtml {
-        inscriptions: vec![inscription_id(1), inscription_id(2)],
+        inscriptions: vec![(inscription_id(1), None), (inscription_id(2), None)],
         prev: Some(1),
         next: Some(2),
       },

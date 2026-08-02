@@ -8,9 +8,10 @@ use {
   super::*,
   crate::inscriptions::opus_metadata,
   crate::templates::{
-    AddressHtml, BlockHtml, BlocksHtml, ChildrenHtml, ClockSvg, CollectionsHtml, EmbedAudioHtml,
-    EmbedImageHtml, EmbedUnknownHtml, EmbedVideoHtml, GalleriesHtml, GalleryHtml, HomeHtml,
-    InputHtml, InscriptionHtml, InscriptionsBlockHtml, InscriptionsHtml, ItemHtml, OutputHtml,
+    AddressHtml, BlockHtml, BlocksHtml, ChildrenHtml, ClockSvg, CollectionsHtml, ComingSoonHtml, Crumb,
+    EmbedAudioHtml, EmbedImageHtml, EmbedUnknownHtml, EmbedVideoHtml, GalleriesHtml, GalleryHtml,
+    HomeHtml, InputHtml, InscriptionHtml, InscriptionsBlockHtml, InscriptionsHtml, InscriptionsSort,
+    ItemHtml, OutputHtml, SatInscription, text_title,
     PageContent, PageHtml, ParentsHtml, PreviewAudioHtml, PreviewCodeHtml, PreviewFontHtml,
     PreviewImageHtml, PreviewMarkdownHtml, PreviewModelHtml, PreviewPdfHtml, PreviewTextHtml,
     PreviewUnknownHtml, PreviewVideoHtml, RareTxt, RuneHtml, RuneNotFoundHtml, RunesHtml, SatHtml,
@@ -57,6 +58,12 @@ enum SpawnConfig {
   Https(AxumAcceptor),
   Http,
   Redirect(String),
+}
+
+#[derive(Deserialize)]
+pub(crate) struct InscriptionsQuery {
+  pub(crate) sort: Option<InscriptionsSort>,
+  pub(crate) cursed: Option<u8>,
 }
 
 #[derive(Deserialize)]
@@ -129,6 +136,11 @@ pub struct Server {
     help = "Decompress encoded content. Currently only supports brotli. Be careful using this on production instances. A decompressed inscription may be arbitrarily large, making decompression a DoS vector."
   )]
   pub(crate) decompress: bool,
+  #[arg(
+    long,
+    help = "Use <DOMAIN> in absolute URLs served to clients, such as Open Graph images and oEmbed links. Defaults to <CSP_ORIGIN>, then <ACME_DOMAIN>, then ordinals.com. Never derived from the host machine's name."
+  )]
+  pub(crate) domain: Option<String>,
   #[arg(long, env = "ORD_SERVER_DISABLE_JSON_API", help = "Disable JSON API.")]
   pub(crate) disable_json_api: bool,
   #[arg(
@@ -213,7 +225,7 @@ impl Server {
         chain: settings.chain(),
         csp_origin: self.csp_origin.clone(),
         decompress: self.decompress,
-        domain: acme_domains.first().cloned(),
+        domain: self.public_domain(),
         index_sats: index.has_sat_index(),
         json_api_enabled: !self.disable_json_api,
         proxy: self.proxy.clone(),
@@ -241,6 +253,7 @@ impl Server {
         )
         .route("/clock", get(Self::clock))
         .route("/collections", get(Self::collections))
+        .route("/museum", get(Self::museum))
         .route("/collections/{page}", get(Self::collections_paginated))
         .route("/decode/{txid}", get(Self::decode))
         .route("/galleries", get(Self::galleries))
@@ -547,6 +560,15 @@ impl Server {
     }
   }
 
+  // Only ever an explicitly configured domain. The host machine's name is used
+  // for ACME challenges when no domain is given, but must never reach clients.
+  fn public_domain(&self) -> Option<String> {
+    self
+      .domain
+      .clone()
+      .or_else(|| self.acme_domain.first().cloned())
+  }
+
   fn http_port(&self) -> Option<u16> {
     if self.http || self.http_port.is_some() || (self.https_port.is_none() && !self.https) {
       Some(self.http_port.unwrap_or(80))
@@ -730,7 +752,7 @@ impl Server {
          }| AddressHtml {
           address: satscard.address.clone(),
           header: false,
-          inscriptions,
+          inscriptions: inscriptions.map(|ids| Self::thumbs(&index, ids)),
           outputs,
           runes_balances,
           sat_balance,
@@ -815,7 +837,7 @@ impl Server {
         SatHtml {
           address,
           blocktime,
-          inscriptions,
+          inscriptions: Self::thumbs(&index, inscriptions),
           sat,
           satpoint,
         }
@@ -846,7 +868,9 @@ impl Server {
         OutputHtml {
           chain: server_config.chain,
           confirmations: output_info.confirmations,
-          inscriptions: output_info.inscriptions,
+          inscriptions: output_info
+            .inscriptions
+            .map(|ids| Self::thumbs(&index, ids)),
           outpoint,
           output: txout,
           runes: output_info.runes,
@@ -1043,6 +1067,7 @@ impl Server {
           id,
           mintable,
           parent,
+          parent_media: None,
         })
         .into_response()
       } else {
@@ -1051,6 +1076,7 @@ impl Server {
           id,
           mintable,
           parent,
+          parent_media: parent.and_then(|parent| Self::thumbnail_media(&index, parent)),
         }
         .page(server_config)
         .into_response()
@@ -1113,7 +1139,7 @@ impl Server {
     task::block_in_place(|| {
       Ok(
         HomeHtml {
-          inscriptions: index.get_home_inscriptions()?,
+          inscriptions: Self::thumbs(&index, index.get_home_inscriptions()?),
         }
         .page(server_config),
       )
@@ -1138,9 +1164,25 @@ impl Server {
       Ok(if accept_json {
         Json(api::Blocks::new(blocks, featured_blocks)).into_response()
       } else {
-        BlocksHtml::new(blocks, featured_blocks)
-          .page(server_config)
-          .into_response()
+        let featured_medias = featured_blocks
+          .iter()
+          .map(|(hash, ids)| {
+            (
+              *hash,
+              ids
+                .iter()
+                .map(|id| Self::thumbnail_media(&index, *id))
+                .collect(),
+            )
+          })
+          .collect();
+
+        BlocksHtml {
+          featured_medias,
+          ..BlocksHtml::new(blocks, featured_blocks)
+        }
+        .page(server_config)
+        .into_response()
       })
     })
   }
@@ -1225,7 +1267,7 @@ impl Server {
         AddressHtml {
           address,
           header: true,
-          inscriptions,
+          inscriptions: inscriptions.map(|ids| Self::thumbs(&index, ids)),
           outputs,
           runes_balances,
           sat_balance,
@@ -1234,6 +1276,21 @@ impl Server {
         .into_response()
       })
     })
+  }
+
+  fn thumbnail_media(index: &Index, id: InscriptionId) -> Option<Media> {
+    index
+      .get_inscription_by_id(id)
+      .ok()
+      .flatten()
+      .map(|inscription| inscription.sniffed_media())
+  }
+
+  fn thumbs(index: &Index, ids: Vec<InscriptionId>) -> Vec<(InscriptionId, Option<Media>)> {
+    ids
+      .into_iter()
+      .map(|id| (id, Self::thumbnail_media(index, id)))
+      .collect()
   }
 
   fn address_info(index: &Index, address: &Address) -> ServerResult<Option<api::AddressInfo>> {
@@ -1306,7 +1363,7 @@ impl Server {
           Height(height),
           Self::index_height(&index)?,
           total_num,
-          featured_inscriptions,
+          Self::thumbs(&index, featured_inscriptions),
           runes,
         )
         .page(server_config)
@@ -1333,6 +1390,7 @@ impl Server {
           chain: server_config.chain,
           etching: index.get_etching(txid)?,
           inscription_count,
+          inscription_medias: Vec::new(),
           transaction,
           txid,
         })
@@ -1342,6 +1400,10 @@ impl Server {
           chain: server_config.chain,
           etching: index.get_etching(txid)?,
           inscription_count,
+          inscription_medias: ParsedEnvelope::from_transaction(&transaction)
+            .into_iter()
+            .map(|envelope| Some(envelope.payload.sniffed_media()))
+            .collect(),
           transaction,
           txid,
         }
@@ -1825,7 +1887,7 @@ impl Server {
           .ok_or_not_found(|| format!("delegate {inscription_id}"))?
       }
 
-      let media = inscription.media();
+      let media = inscription.sniffed_media();
 
       if let Media::Iframe = media {
         return Ok(
@@ -1985,18 +2047,22 @@ impl Server {
 
       let properties = inscription.properties();
 
-      let item = properties
-        .gallery
+      let items = properties.gallery.clone();
+      let item = items
         .get(i)
         .ok_or_not_found(|| format!("gallery {query} item {i}"))?
         .clone();
+      let gallery_title = properties.attributes.title.clone();
+      let total = items.len();
 
       Ok(
         ItemHtml {
           gallery_id: info.id,
           gallery_number: info.number,
+          gallery_title,
           i,
           item,
+          total,
         }
         .page(server_config),
       )
@@ -2242,22 +2308,39 @@ impl Server {
 
         let properties = inscription.properties();
 
+        // Render the breadcrumb trail when there's somewhere to navigate to,
+        // i.e. the inscription has at least one parent OR at least one
+        // child. Inscriptions with neither (an isolated leaf) get no
+        // breadcrumb — a single bold current crumb with an empty dropdown
+        // is just clutter.
+        let breadcrumbs = if info.parents.is_empty() && info.child_count == 0 {
+          Vec::new()
+        } else {
+          Self::breadcrumb_trails(&index, info.id, 0)?
+        };
+
         InscriptionHtml {
+          breadcrumbs,
           chain: server_config.chain,
           charms: Charm::Vindicated.unset(info.charms.iter().fold(0, |mut acc, charm| {
             charm.set(&mut acc);
             acc
           })),
           child_count: info.child_count,
-          children: info.children,
+          children: Self::thumbs(index, info.children),
           fee: info.fee,
+          gallery_media: properties
+            .gallery
+            .iter()
+            .map(|item| Self::thumbnail_media(index, item.id()))
+            .collect(),
           height: info.height,
           id: info.id,
           inscription,
           next: info.next,
           number: info.number,
           output: txout,
-          parents: info.parents,
+          parents: Self::thumbs(index, info.parents),
           previous: info.previous,
           properties,
           rune: info.rune,
@@ -2269,6 +2352,101 @@ impl Server {
         .into_response()
       })
     })
+  }
+
+  fn breadcrumb_trails(
+    index: &Index,
+    id: InscriptionId,
+    depth: usize,
+  ) -> ServerResult<Vec<Vec<Crumb>>> {
+    const MAX_DEPTH: usize = 10;
+    const MAX_TRAILS: usize = 5;
+
+    let Some(entry) = index.get_inscription_entry(id)? else {
+      return Ok(Vec::new());
+    };
+
+    let title = index.get_inscription_by_id(id)?.and_then(|inscription| {
+      let title = inscription.properties().attributes.title;
+      title.or_else(|| text_title(&inscription))
+    });
+
+    let reinscriptions = match entry.sat {
+      Some(sat) => index
+        .get_inscription_ids_by_sat(sat)?
+        .into_iter()
+        .filter(|&sat_id| sat_id != id)
+        .map(|sat_id| {
+          Ok(SatInscription {
+            id: sat_id,
+            label: Self::inscription_label(index, sat_id)?,
+          })
+        })
+        .collect::<ServerResult<Vec<SatInscription>>>()?,
+      None => Vec::new(),
+    };
+
+    // Children for every crumb in the trail, including the current
+    // inscription itself. (We initially skipped children for the current
+    // crumb because the page body already lists them, but that omission
+    // felt arbitrary — the dropdown is a navigation shortcut, and not
+    // having it on the current crumb only made the trail asymmetric.)
+    let (child_ids, _) =
+      index.get_children_by_sequence_number_paginated(entry.sequence_number, 21, 0)?;
+    let more_children = child_ids.len() > 20;
+    let children = child_ids
+      .into_iter()
+      .take(20)
+      .map(|child_id| {
+        Ok(SatInscription {
+          id: child_id,
+          label: Self::inscription_label(index, child_id)?,
+        })
+      })
+      .collect::<ServerResult<Vec<SatInscription>>>()?;
+
+    let crumb = Crumb {
+      id,
+      title: title.unwrap_or_else(|| format!("#{}", entry.inscription_number)),
+      reinscriptions,
+      children,
+      more_children,
+    };
+
+    let (parents, _) = index.get_parents_by_sequence_number_paginated(entry.parents, 100, 0)?;
+
+    if parents.is_empty() || depth >= MAX_DEPTH {
+      return Ok(vec![vec![crumb]]);
+    }
+
+    let mut trails = Vec::new();
+    'outer: for parent in parents {
+      for mut trail in Self::breadcrumb_trails(index, parent, depth + 1)? {
+        trail.push(crumb.clone());
+        trails.push(trail);
+        if trails.len() >= MAX_TRAILS {
+          break 'outer;
+        }
+      }
+    }
+
+    Ok(trails)
+  }
+
+  fn inscription_label(index: &Index, id: InscriptionId) -> ServerResult<String> {
+    if let Some(inscription) = index.get_inscription_by_id(id)? {
+      let title = inscription.properties().attributes.title;
+      if let Some(title) = title.or_else(|| text_title(&inscription)) {
+        return Ok(title);
+      }
+    }
+
+    let number = index
+      .get_inscription_entry(id)?
+      .map(|entry| entry.inscription_number)
+      .unwrap_or_default();
+
+    Ok(format!("#{number}"))
   }
 
   async fn inscriptions_json(
@@ -2316,6 +2494,12 @@ impl Server {
     Self::collections_paginated(Extension(server_config), Extension(index), Path(0)).await
   }
 
+  async fn museum(
+    Extension(server_config): Extension<Arc<ServerConfig>>,
+  ) -> ServerResult {
+    Ok(ComingSoonHtml {}.page(server_config).into_response())
+  }
+
   async fn collections_paginated(
     Extension(server_config): Extension<Arc<ServerConfig>>,
     Extension(index): Extension<Arc<Index>>,
@@ -2331,7 +2515,7 @@ impl Server {
 
       Ok(
         CollectionsHtml {
-          inscriptions: collections,
+          inscriptions: Self::thumbs(&index, collections),
           prev,
           next,
         }
@@ -2377,7 +2561,7 @@ impl Server {
         .into_response()
       } else {
         GalleriesHtml {
-          inscriptions: galleries,
+          inscriptions: Self::thumbs(&index, galleries),
           prev,
           next,
         }
@@ -2449,7 +2633,11 @@ impl Server {
         GalleryHtml {
           id,
           number,
-          items,
+          title: properties.attributes.title.clone(),
+          items: items
+            .into_iter()
+            .map(|(i, item_id)| (i, item_id, Self::thumbnail_media(&index, item_id)))
+            .collect(),
           prev_page,
           next_page,
         }
@@ -2505,7 +2693,7 @@ impl Server {
         ChildrenHtml {
           parent,
           parent_number,
-          children,
+          children: Self::thumbs(&index, children),
           prev_page,
           next_page,
         }
@@ -2518,12 +2706,14 @@ impl Server {
   async fn inscriptions(
     Extension(server_config): Extension<Arc<ServerConfig>>,
     Extension(index): Extension<Arc<Index>>,
+    Query(query): Query<InscriptionsQuery>,
     accept_json: AcceptJson,
   ) -> ServerResult {
     Self::inscriptions_paginated(
       Extension(server_config),
       Extension(index),
       Path(0),
+      Query(query),
       accept_json,
     )
     .await
@@ -2533,10 +2723,17 @@ impl Server {
     Extension(server_config): Extension<Arc<ServerConfig>>,
     Extension(index): Extension<Arc<Index>>,
     Path(page_index): Path<u32>,
+    Query(query): Query<InscriptionsQuery>,
     AcceptJson(accept_json): AcceptJson,
   ) -> ServerResult {
     task::block_in_place(|| {
-      let (inscriptions, more) = index.get_inscriptions_paginated(100, page_index)?;
+      let sort = query.sort.unwrap_or_default();
+      let cursed = query.cursed == Some(1);
+      let (inscriptions, more) = if cursed {
+        index.get_cursed_inscriptions_paginated(100, page_index, sort)?
+      } else {
+        index.get_inscriptions_paginated(100, page_index, sort)?
+      };
 
       let prev = page_index.checked_sub(1);
 
@@ -2551,9 +2748,11 @@ impl Server {
         .into_response()
       } else {
         InscriptionsHtml {
-          inscriptions,
+          inscriptions: Self::thumbs(&index, inscriptions),
           next,
           prev,
+          sort,
+          cursed,
         }
         .page(server_config)
         .into_response()
@@ -2607,7 +2806,7 @@ impl Server {
         InscriptionsBlockHtml::new(
           block_height,
           index.block_height()?.unwrap_or(Height(0)).n(),
-          inscriptions,
+          Self::thumbs(&index, inscriptions),
           more,
           page_index,
         )
@@ -2651,7 +2850,7 @@ impl Server {
         ParentsHtml {
           id,
           number: child.inscription_number,
-          parents,
+          parents: Self::thumbs(&index, parents),
           prev_page,
           next_page,
         }
@@ -3081,7 +3280,7 @@ mod tests {
         content,
         Arc::new(ServerConfig {
           chain: self.index.chain(),
-          domain: Some(System::host_name().unwrap()),
+          domain: None,
           ..Default::default()
         }),
       )
@@ -3906,6 +4105,7 @@ mod tests {
         entry,
         mintable: false,
         parent: Some(parent),
+        parent_media: None,
       },
     );
 
@@ -4710,7 +4910,7 @@ mod tests {
       .assert_response_regex(
         "/",
         StatusCode::OK,
-        ".*<a href=/ title=home>Ordinals<sup>regtest</sup></a>.*",
+        ".*<a href=/ title=home>Ordinals\\.Gallery<sup>regtest</sup></a>.*",
       );
   }
 
@@ -6282,7 +6482,7 @@ mod tests {
       format!("/preview/{inscription_id}"),
       StatusCode::OK,
       &format!("default-src {origin} 'unsafe-inline'"),
-      format!(r".*background-image: url\(/content/{inscription_id}\);.*"),
+      format!(r".*<img src=/content/{inscription_id} .*"),
     );
   }
 
@@ -6460,7 +6660,7 @@ mod tests {
     server.assert_response_regex(
       format!("/gallery/{}/0", Sat(5000000000).name()),
       StatusCode::OK,
-      ".*<title>Gallery 0 Item 0</title.*",
+      ".*<title>Gallery 0 / Item 0</title.*",
     );
   }
 
@@ -6739,7 +6939,7 @@ mod tests {
       r".*
 <h1>Collections</h1>
 <div class=thumbnails>
-  <a href=/inscription/.*><iframe .* src=/preview/.*></iframe></a>
+  <a href=/inscription/.*><img .* src=/content/.*></a>
   (<a href=/inscription/[[:xdigit:]]{64}i0>.*</a>\s*){99}
 </div>
 <div class=center>
@@ -6756,7 +6956,7 @@ prev
       ".*
 <h1>Collections</h1>
 <div class=thumbnails>
-  <a href=/inscription/.*><iframe .* src=/preview/.*></iframe></a>
+  <a href=/inscription/.*><img .* src=/content/.*></a>
 </div>
 <div class=center>
 <a class=prev href=/collections/0>prev</a>
@@ -7044,7 +7244,7 @@ next
       r".*
 <h1>Galleries</h1>
 <div class=thumbnails>
-  <a href=/inscription/.*><iframe .* src=/preview/.*></iframe></a>
+  <a href=/inscription/.*><img .* src=/content/.*></a>
   (<a href=/inscription/[[:xdigit:]]{64}i0>.*</a>\s*){99}
 </div>
 <div class=center>
@@ -7061,7 +7261,7 @@ prev
       ".*
 <h1>Galleries</h1>
 <div class=thumbnails>
-  <a href=/inscription/.*><iframe .* src=/preview/.*></iframe></a>
+  <a href=/inscription/.*><img .* src=/content/.*></a>
 </div>
 <div class=center>
 <a class=prev href=/galleries/0>prev</a>
@@ -7613,7 +7813,7 @@ next
     server.assert_response_regex(
       format!("/inscription/{parent_inscription_id}"),
       StatusCode::OK,
-      format!(".*<title>Inscription 0</title>.*<dt>children</dt>.*<a href=/inscription/{inscription_id}>.*</a>.*"),
+      format!(".*<title>Inscription 0</title>.*<dt class=with-toolbar>children.*<a href=/inscription/{inscription_id}>.*</a>.*"),
     );
 
     assert_eq!(
@@ -7628,6 +7828,55 @@ next
         .get_json::<api::Inscription>(format!("/inscription/{parent_inscription_id}"))
         .children,
       [inscription_id],
+    );
+  }
+
+  #[test]
+  fn inscription_breadcrumb_falls_back_to_number_when_untitled() {
+    let server = TestServer::builder().chain(Chain::Regtest).build();
+    server.mine_blocks(1);
+
+    let parent_txid = server.core.broadcast_tx(TransactionTemplate {
+      inputs: &[(1, 0, 0, inscription("image/png", "hello").to_witness())],
+      ..default()
+    });
+
+    server.mine_blocks(1);
+
+    let parent_inscription_id = InscriptionId {
+      txid: parent_txid,
+      index: 0,
+    };
+
+    let txid = server.core.broadcast_tx(TransactionTemplate {
+      inputs: &[
+        (
+          2,
+          0,
+          0,
+          Inscription {
+            content_type: Some("image/png".into()),
+            body: Some("hello".into()),
+            parents: vec![parent_inscription_id.value()],
+            ..default()
+          }
+          .to_witness(),
+        ),
+        (2, 1, 0, Default::default()),
+      ],
+      ..default()
+    });
+
+    server.mine_blocks(1);
+
+    let inscription_id = InscriptionId { txid, index: 0 };
+
+    server.assert_response_regex(
+      format!("/inscription/{inscription_id}"),
+      StatusCode::OK,
+      format!(
+        ".*<div class=breadcrumbs>.*<a href=/inscription/{parent_inscription_id}>#0</a>.*<span class=current>#1</span>.*"
+      ),
     );
   }
 
@@ -7753,13 +8002,13 @@ next
       format!("/gallery/{gallery_id}"),
       StatusCode::OK,
       format!(
-        ".*<title>Inscription \\d+ Gallery</title>.*<h1><a href=/inscription/{gallery_id}>Inscription \\d+</a> Gallery</h1>.*<div class=thumbnails>.*<a href=/gallery/{gallery_id}/0><iframe .* src=/preview/{item_id}\\?thumb=1></iframe></a>.*",
+        ".*<title>Inscription \\d+ Gallery</title>.*<h1><a href=/inscription/{gallery_id}>Inscription \\d+</a> / Gallery</h1>.*<div class=thumbnails>.*<a href=/gallery/{gallery_id}/0><iframe .* src=/preview/{item_id}\\?thumb=1></iframe></a>.*",
       ),
     );
   }
 
   #[test]
-  fn inscriptions_page_shows_max_four_children() {
+  fn inscriptions_page_shows_all_children() {
     let server = TestServer::builder().chain(Chain::Regtest).build();
     server.mine_blocks(1);
 
@@ -7853,6 +8102,7 @@ next
 .*<a href=/inscription/.*><iframe .* src=/preview/.*\\?thumb=1></iframe></a>.*
 .*<a href=/inscription/.*><iframe .* src=/preview/.*\\?thumb=1></iframe></a>.*
 .*<a href=/inscription/.*><iframe .* src=/preview/.*\\?thumb=1></iframe></a>.*
+.*<a href=/inscription/.*><iframe .* src=/preview/.*\\?thumb=1></iframe></a>.*
     <div class=center>
       <a href=/children/{parent_inscription_id}>all \\(5\\)</a>
     </div>.*"
@@ -7927,7 +8177,7 @@ next
       StatusCode::OK,
       format!(
         ".*<title>Inscription \\d+</title>.*
-.*<dt>gallery</dt>.*
+.*<dt class=with-toolbar>gallery.*
 .*<a href=/gallery/{gallery_id}/.*><iframe .* src=/preview/.*></iframe></a>.*
 .*<a href=/gallery/{gallery_id}/.*><iframe .* src=/preview/.*></iframe></a>.*
 .*<a href=/gallery/{gallery_id}/.*><iframe .* src=/preview/.*></iframe></a>.*
@@ -8146,7 +8396,7 @@ next
     server.assert_response_regex(
       format!("/inscription/{inscription_id}"),
       StatusCode::OK,
-      ".*<title>Inscription -1</title>.*<h1>Inscription -1</h1>.*<div class=thumbnails>(.*<a href=/inscription/.*><iframe .* src=/preview/.*></iframe></a>.*){4}.*",
+      ".*<title>Inscription -1</title>.*<h1>.*</h1>.*<div class=thumbnails>(.*<a href=/inscription/.*><iframe .* src=/preview/.*></iframe></a>.*){4}.*",
     );
   }
 
@@ -8173,7 +8423,7 @@ next
       format!("/inscription/{inscription_id}"),
       StatusCode::OK,
       format!(
-        ".*<h1>Inscription 0</h1>.*
+        ".*<h1>.*</h1>.*
 <dl>
   <dt>id</dt>
   <dd class=collapse>{inscription_id}</dd>.*"
@@ -8183,7 +8433,7 @@ next
       "/inscription/0",
       StatusCode::OK,
       format!(
-        ".*<h1>Inscription 0</h1>.*
+        ".*<h1>.*</h1>.*
 <dl>
   <dt>id</dt>
   <dd class=collapse>{inscription_id}</dd>.*"
@@ -8194,7 +8444,7 @@ next
       "/inscription/-1",
       StatusCode::OK,
       format!(
-        ".*<h1>Inscription -1</h1>.*
+        ".*<h1>.*</h1>.*
 <dl>
   <dt>id</dt>
   <dd class=collapse>{cursed_inscription_id}</dd>.*"
@@ -8225,7 +8475,7 @@ next
       format!("/inscription/{id}"),
       StatusCode::OK,
       format!(
-        ".*<h1>Inscription -1</h1>.*
+        ".*<h1>.*</h1>.*
 <dl>
   <dt>id</dt>
   <dd class=collapse>{id}</dd>
@@ -8264,7 +8514,7 @@ next
       format!("/inscription/{id}"),
       StatusCode::OK,
       format!(
-        ".*<h1>Inscription 0</h1>.*
+        ".*<h1>.*</h1>.*
 <dl>
   <dt>id</dt>
   <dd class=collapse>{id}</dd>
@@ -8300,7 +8550,7 @@ next
       format!("/inscription/{id}"),
       StatusCode::OK,
       format!(
-        ".*<h1>Inscription 0</h1>.*
+        ".*<h1>.*</h1>.*
 <dl>
   <dt>id</dt>
   <dd class=collapse>{id}</dd>
@@ -8336,7 +8586,7 @@ next
       format!("/inscription/{id}"),
       StatusCode::OK,
       format!(
-        ".*<h1>Inscription 0</h1>.*
+        ".*<h1>.*</h1>.*
 <dl>
   <dt>id</dt>
   <dd class=collapse>{id}</dd>
@@ -8372,7 +8622,7 @@ next
       format!("/inscription/{id}"),
       StatusCode::OK,
       format!(
-        ".*<h1>Inscription 0</h1>.*
+        ".*<h1>.*</h1>.*
 <dl>
   <dt>id</dt>
   <dd class=collapse>{id}</dd>
@@ -8412,7 +8662,7 @@ next
       format!("/inscription/{id}"),
       StatusCode::OK,
       format!(
-        ".*<h1>Inscription -1</h1>.*
+        ".*<h1>.*</h1>.*
 <dl>
   <dt>id</dt>
   <dd class=collapse>{id}</dd>
@@ -8476,7 +8726,7 @@ next
       format!("/inscription/{id}"),
       StatusCode::OK,
       format!(
-        ".*<h1>Inscription 0</h1>.*
+        ".*<h1>.*</h1>.*
 <dl>
   <dt>id</dt>
   <dd class=collapse>{id}</dd>
@@ -8537,7 +8787,7 @@ next
       format!("/inscription/{id}"),
       StatusCode::OK,
       format!(
-        ".*<h1>Inscription 0</h1>.*
+        ".*<h1>.*</h1>.*
 <dl>
   <dt>id</dt>
   <dd class=collapse>{id}</dd>
@@ -8587,7 +8837,7 @@ next
       format!("/inscription/{id}"),
       StatusCode::OK,
       format!(
-        ".*<h1>Inscription -1</h1>.*
+        ".*<h1>.*</h1>.*
 <dl>
   <dt>id</dt>
   <dd class=collapse>{id}</dd>
@@ -8623,7 +8873,7 @@ next
       format!("/inscription/{id}"),
       StatusCode::OK,
       format!(
-        ".*<h1>Inscription 0</h1>.*
+        ".*<h1>.*</h1>.*
 <dl>
   <dt>id</dt>
   <dd class=collapse>{id}</dd>
@@ -8649,7 +8899,7 @@ next
       format!("/inscription/{id}"),
       StatusCode::OK,
       format!(
-        ".*<h1>Inscription 0</h1>.*
+        ".*<h1>.*</h1>.*
 <dl>
   <dt>id</dt>
   <dd class=collapse>{id}</dd>
@@ -9468,7 +9718,7 @@ next
       format!("/inscription/{id}"),
       StatusCode::OK,
       format!(
-        ".*<h1>Inscription 1</h1>.*
+        ".*<h1>.*</h1>.*
         <dl>
           <dt>id</dt>
           <dd class=collapse>{id}</dd>

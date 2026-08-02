@@ -3,7 +3,7 @@ use super::*;
 #[derive(Boilerplate)]
 pub(crate) struct InscriptionsBlockHtml {
   pub(crate) block: u32,
-  pub(crate) inscriptions: Vec<InscriptionId>,
+  pub(crate) inscriptions: Vec<(InscriptionId, Option<Media>)>,
   pub(crate) prev_block: Option<u32>,
   pub(crate) next_block: Option<u32>,
   pub(crate) prev_page: Option<u32>,
@@ -14,7 +14,7 @@ impl InscriptionsBlockHtml {
   pub(crate) fn new(
     block: u32,
     current_blockheight: u32,
-    inscriptions: Vec<InscriptionId>,
+    inscriptions: Vec<(InscriptionId, Option<Media>)>,
     more_inscriptions: bool,
     page_index: u32,
   ) -> Self {
@@ -52,7 +52,7 @@ mod tests {
     assert_regex_match!(
       InscriptionsBlockHtml {
         block: 21,
-        inscriptions: vec![inscription_id(1), inscription_id(2)],
+        inscriptions: vec![(inscription_id(1), None), (inscription_id(2), None)],
         prev_block: None,
         next_block: None,
         prev_page: None,
@@ -78,7 +78,7 @@ mod tests {
     assert_regex_match!(
       InscriptionsBlockHtml {
         block: 21,
-        inscriptions: vec![inscription_id(1), inscription_id(2)],
+        inscriptions: vec![(inscription_id(1), None), (inscription_id(2), None)],
         prev_block: Some(20),
         next_block: Some(22),
         next_page: Some(3),

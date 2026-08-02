@@ -2,7 +2,7 @@ use super::*;
 
 #[derive(Boilerplate)]
 pub(crate) struct HomeHtml {
-  pub(crate) inscriptions: Vec<InscriptionId>,
+  pub(crate) inscriptions: Vec<(InscriptionId, Option<Media>)>,
 }
 
 impl PageContent for HomeHtml {
@@ -19,7 +19,7 @@ mod tests {
   fn html() {
     assert_regex_match!(
       HomeHtml {
-        inscriptions: vec![inscription_id(1), inscription_id(2)],
+        inscriptions: vec![(inscription_id(1), None), (inscription_id(2), None)],
       }
       .to_string()
       .unindent(),

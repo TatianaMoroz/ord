@@ -1,6 +1,12 @@
 Changelog
 =========
 
+[Unreleased]
+------------
+
+### Added
+- Rescue inscriptions with a wrong `content_type` field via body magic-byte sniffing on `/preview/<id>`. Recognised formats: glTF/GLB, glTF+json, PNG, JPEG, GIF, WebP, MP4 (brand-filtered), Ogg, WAV, FLAC, and PDF. Brotli-encoded bodies are transparently decoded behind a 4 KiB cap. The MP4 matcher excludes HEIC/HEIF and QuickTime; no format is auto-upgraded to `Media::Iframe`. `/content/<id>`, `/embed/<id>`, thumbnails, and oEmbed are unaffected. See `docs/src/inscriptions/rendering.md` § Content-Type Fallback.
+
 [0.27.1](https://github.com/ordinals/ord/releases/tag/0.27.1) - 2026-03-10
 --------------------------------------------------------------------------
 

@@ -80,7 +80,10 @@ nav > :first-child {
 }
 
 nav a.active {
-  color: #ffffff;
+  /* Theme-aware: --light-fg is #ffffff in dark theme (current behavior) and
+     #000000 in light theme, so the active home logo stays visible against
+     the white nav background in light mode instead of disappearing. */
+  color: var(--light-fg);
 }
 
 nav a.active img {
@@ -220,40 +223,71 @@ a.mythic {
 }
 
 .thumbnails > a {
-  border-radius: 2%;
-  border: 1px solid #222;
+  aspect-ratio: 1 / 1;
+  contain-intrinsic-size: auto 180px;
+  content-visibility: auto;
   margin: 1%;
   overflow: hidden;
+  position: relative;
   width: 23%;
 }
 
-.thumbnails > a:hover {
-  border-color: #444;
+.thumbnails iframe {
+  height: 400%;
+  left: 0;
+  pointer-events: none;
+  position: absolute;
+  top: 0;
+  transform: scale(0.25);
+  transform-origin: 0 0;
+  width: 400%;
 }
 
-.thumbnails iframe {
+.thumbnails img {
   height: 100%;
-  pointer-events: none;
+  object-fit: contain;
   width: 100%;
+}
+
+img.rendering-pixelated {
+  image-rendering: pixelated;
+}
+
+img.rendering-auto {
+  image-rendering: auto;
 }
 
 .inscription {
   display: flex;
+  gap: 0.5rem;
   justify-content: center;
 }
 
 .inscription > *:nth-child(1), .inscription > *:nth-child(3) {
   align-items: center;
-  color: var(--dark-bg);
+  color: #a1adb8;
   display: flex;
   flex: 1;
   font-size: 200%;
   justify-content: center;
+  opacity: 0;
   text-decoration: none;
+  transition: opacity 200ms, color 200ms;
 }
 
 .inscription > a:nth-child(1):hover, .inscription > a:nth-child(3):hover {
-  color: var(--dark-fg);
+  color: #ffffff;
+  opacity: 1;
+}
+
+:root[data-theme=light] .inscription > a:nth-child(1):hover,
+:root[data-theme=light] .inscription > a:nth-child(3):hover {
+  color: #000000;
+}
+
+.inscription.gallery-item-nav > *:nth-child(1),
+.inscription.gallery-item-nav > *:nth-child(3) {
+  opacity: 0.3;
 }
 
 .inscription > *:nth-child(2) {
@@ -262,6 +296,18 @@ a.mythic {
 
 .inscription > a > iframe {
   width: 100%;
+}
+
+@media (max-width: 38rem) {
+  .inscription.gallery-item-nav > *:nth-child(1),
+  .inscription.gallery-item-nav > *:nth-child(3) {
+    font-size: 150%;
+  }
+
+  .inscription.gallery-item-nav > *:nth-child(2) {
+    flex-basis: 70%;
+    min-width: 0;
+  }
 }
 
 .satscard-error {
@@ -302,9 +348,549 @@ a.mythic {
 }
 
 .subtitle {
-  margin-top: 0.25rem;
+  margin: 0;
 }
 
-h1:has(+ .subtitle) {
+h1:has(+ .subtitle), h1:has(+ .subtitle-row) {
   margin-bottom: 0;
 }
+
+.subtitle-row {
+  align-items: center;
+  display: flex;
+  gap: 1rem;
+  margin: 0.25rem 0 1rem;
+}
+
+.subtitle-row > .subtitle {
+  flex: 1;
+  min-width: 0;
+}
+
+.title-links {
+  display: flex;
+  flex-shrink: 0;
+  gap: 0.75rem;
+  margin-left: auto;
+}
+
+.title-links > a {
+  align-items: center;
+  display: inline-flex;
+}
+
+.title-links img.icon {
+  height: 1.1rem;
+  width: 1.1rem;
+}
+
+.title-links > .title-dropdown {
+  align-items: center;
+  display: inline-flex;
+  position: relative;
+}
+
+.title-dropdown-toggle {
+  align-items: center;
+  background: none;
+  border: none;
+  color: inherit;
+  cursor: pointer;
+  display: inline-flex;
+  gap: 0.25rem;
+  padding: 0;
+}
+
+.title-dropdown-caret {
+  border-left: 0.3em solid transparent;
+  border-right: 0.3em solid transparent;
+  border-top: 0.35em solid currentColor;
+  display: inline-block;
+  height: 0;
+  width: 0;
+}
+
+.title-dropdown-menu {
+  background: var(--light-bg);
+  border: 1px solid var(--dark-fg);
+  border-radius: 0.25rem;
+  display: none;
+  margin-top: 0.25rem;
+  position: absolute;
+  right: 0;
+  top: 100%;
+  z-index: 5;
+}
+
+.title-dropdown-menu.open {
+  display: block;
+}
+
+.title-dropdown-menu a {
+  color: var(--light-fg);
+  display: block;
+  padding: 0.2rem 0.6rem;
+  text-decoration: none;
+  white-space: nowrap;
+}
+
+.title-dropdown-menu a:hover {
+  text-decoration: underline;
+}
+
+.breadcrumbs {
+  font-size: 0.85rem;
+  margin: 1.25rem 0 0;
+  /* Keep the breadcrumb in a single horizontal row regardless of viewport
+     width. When the content is wider than the available space (typical on
+     mobile) this container scrolls horizontally instead of wrapping. */
+  overflow-x: auto;
+  /* Space between the breadcrumb text and the horizontal scrollbar so they
+     don't crowd each other. */
+  padding-bottom: 0.5rem;
+  /* Static right-edge fade as a scroll affordance. Progressive JS extends
+     this to also fade the left edge once the user has scrolled past the
+     start; without JS, the right fade alone is still a decent hint that
+     there's more to swipe to. */
+  mask-image: linear-gradient(to right, black calc(100% - 2rem), transparent);
+  -webkit-mask-image: linear-gradient(to right, black calc(100% - 2rem), transparent);
+}
+
+.breadcrumb {
+  align-items: center;
+  display: flex;
+  /* No wrap — the .breadcrumbs container handles overflow via scroll. */
+  flex-wrap: nowrap;
+  gap: 0.4rem;
+  margin: 0.15rem 0;
+  /* Force the row to its natural content width so it can extend past the
+     container's clientWidth and trigger horizontal scrolling. */
+  width: max-content;
+}
+
+.breadcrumb-fork {
+  display: inline-flex;
+  flex-direction: column;
+  gap: 0.15rem;
+}
+
+.breadcrumb-fork-row {
+  align-items: center;
+  display: inline-flex;
+  /* Same single-row enforcement as the parent .breadcrumb. */
+  flex-wrap: nowrap;
+  gap: 0.4rem;
+  /* Empty middles (a trail with no divergent crumbs after collapsing
+     prefix/suffix) still reserve a full line of vertical space. */
+  min-height: 1.2em;
+}
+
+/* Wraps the inline <svg> branch + its .breadcrumb-fork at every fork
+   level (outer + each nested sub-fork). The two are flex siblings so the
+   SVG sits on the LEFT of the fork rows and they wrap together as a unit
+   on narrow viewports. */
+.breadcrumb-tree-group {
+  align-items: center;
+  display: inline-flex;
+  flex-shrink: 0;
+  gap: 0.4rem;
+}
+
+/* The drawn tree branch. JS sets its `height` to match the fork's actual
+   rendered height so the arm y-coordinates (which are percentages in a
+   100x100 viewBox) land on each row's vertical centre. */
+.breadcrumb-tree-branch {
+  display: block;
+  flex-shrink: 0;
+  width: 1.4em;
+}
+
+.breadcrumb a,
+.breadcrumb a:visited {
+  color: inherit;
+  text-decoration: none;
+}
+
+.breadcrumb a:hover {
+  text-decoration: underline;
+}
+
+.breadcrumb .current {
+  font-weight: bold;
+}
+
+.crumb {
+  position: relative;
+  white-space: nowrap;
+}
+
+.crumb-toggle {
+  background: none;
+  border-bottom: 0;
+  border-left: 0.4em solid transparent;
+  border-right: 0.4em solid transparent;
+  border-top: 0.45em solid currentColor;
+  color: inherit;
+  cursor: pointer;
+  display: inline-block;
+  height: 0;
+  margin-left: 0.4em;
+  padding: 0;
+  vertical-align: middle;
+  width: 0;
+}
+
+.crumb-menu {
+  background: var(--light-bg);
+  border: 1px solid var(--dark-fg);
+  border-radius: 0.25rem;
+  display: none;
+  left: 0;
+  margin-top: 0.25rem;
+  padding: 0.25rem 0;
+  position: absolute;
+  top: 100%;
+  white-space: nowrap;
+  z-index: 10;
+}
+
+.crumb-menu.open {
+  display: block;
+}
+
+.crumb-menu a {
+  color: var(--light-fg);
+  display: block;
+  padding: 0.2rem 0.6rem;
+  text-decoration: none;
+}
+
+.crumb-menu a:hover {
+  text-decoration: underline;
+}
+
+.crumb-menu-divider {
+  border-top: 1px solid var(--light-fg);
+  margin: 0.25rem 0;
+  opacity: 0.4;
+}
+
+.gallery-row {
+  align-items: center;
+  display: flex;
+}
+
+.gallery-row > .thumbnails {
+  flex: 1;
+}
+
+.gallery-mode-scroll > .thumbnails {
+  flex-wrap: nowrap;
+  overflow-x: auto;
+  scroll-behavior: smooth;
+  scroll-snap-type: x mandatory;
+  scrollbar-width: none;
+}
+
+.gallery-mode-scroll > .thumbnails::-webkit-scrollbar {
+  display: none;
+}
+
+.gallery-mode-scroll > .thumbnails > a {
+  flex: 0 0 23%;
+  scroll-snap-align: center;
+}
+
+.gallery-mode-all > .thumbnails > a[hidden] {
+  display: none;
+}
+
+.gallery-row .gallery-prev,
+.gallery-row .gallery-next {
+  background: none;
+  border: none;
+  color: #a1adb8;
+  cursor: pointer;
+  flex-shrink: 0;
+  font-family: inherit;
+  font-size: 1.5em;
+  padding: 0 0.4em;
+}
+
+.gallery-row .gallery-prev[disabled],
+.gallery-row .gallery-next[disabled] {
+  cursor: default;
+  opacity: 0.3;
+}
+
+dt.with-toolbar {
+  align-items: center;
+  display: flex;
+}
+
+.gallery-toolbar {
+  display: flex;
+  gap: 0.25em;
+  margin-left: auto;
+}
+
+.gallery-view-btn {
+  background: none;
+  border: 1px solid transparent;
+  border-radius: 4px;
+  cursor: pointer;
+  padding: 0.25em;
+}
+
+.gallery-view-btn:hover {
+  border-color: #333;
+}
+
+.gallery-view-btn.active {
+  background: #1f2426;
+  border-color: #444;
+}
+
+.gallery-view-btn img.icon {
+  display: block;
+  height: 18px;
+  width: 18px;
+}
+
+@media (max-width: 38rem) {
+  .gallery-mode-scroll > .gallery-prev,
+  .gallery-mode-scroll > .gallery-next {
+    display: none;
+  }
+}
+
+@keyframes gallery-scroll-hint {
+  0%, 100% { transform: translateX(0); }
+  40% { transform: translateX(-18px); }
+}
+
+.gallery-row.scroll-hint > .thumbnails {
+  animation: gallery-scroll-hint 900ms ease-in-out;
+}
+
+.nav-button {
+  background: none;
+  border: none;
+  cursor: pointer;
+  display: inline-flex;
+  padding: 0;
+}
+
+.sort-form {
+  display: flex;
+  flex: 0;
+  justify-content: flex-end;
+  margin-bottom: 0.5rem;
+}
+
+.sort-form label {
+  align-items: center;
+  display: inline-flex;
+  gap: 0.4rem;
+}
+
+.sort-form select {
+  background: var(--light-bg);
+  border: 1px solid var(--light-fg);
+  border-radius: 3px;
+  color: var(--light-fg);
+  cursor: pointer;
+  font: inherit;
+  padding: 0.2rem 0.4rem;
+}
+
+/* Filter toolbar — its own row beneath the page heading */
+.inscriptions-toolbar {
+  align-items: center;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  margin: 0 0 1rem;
+  padding: 0;
+  width: auto;
+}
+
+/* Shared sizing so every control is the same height */
+.toolbar-btn,
+.inscriptions-toolbar select {
+  background: var(--light-bg);
+  border: 1px solid var(--light-fg);
+  border-radius: 4px;
+  box-sizing: border-box;
+  color: var(--light-fg);
+  cursor: pointer;
+  font: inherit;
+  height: 2rem;
+  line-height: 1;
+}
+
+.toolbar-btn {
+  align-items: center;
+  display: inline-flex;
+  gap: 0.4rem;
+  list-style: none;
+  padding: 0 0.7rem;
+  user-select: none;
+}
+
+.inscriptions-toolbar select {
+  appearance: none;
+  -webkit-appearance: none;
+  background-image: url(/static/chevron-down.svg);
+  background-position: right 0.7rem center;
+  background-repeat: no-repeat;
+  background-size: 0.7rem auto;
+  padding: 0 1.8rem 0 0.7rem;
+}
+
+.toolbar-btn::-webkit-details-marker {
+  display: none;
+}
+
+.toolbar-btn img.icon {
+  height: 1rem;
+  width: 1rem;
+}
+
+/* Square cursed toggle so the skull sits centred */
+.cursed-toggle {
+  justify-content: center;
+  padding: 0;
+  width: 2rem;
+}
+
+.cursed-toggle input {
+  display: none;
+}
+
+.cursed-toggle:has(input:checked) {
+  background: var(--dark-fg);
+  border-color: var(--dark-fg);
+}
+
+.cursed-toggle:has(input:checked) img.icon {
+  filter: brightness(0);
+}
+
+:root[data-theme=light] .cursed-toggle:has(input:checked) {
+  background: #000;
+  border-color: #000;
+}
+
+:root[data-theme=light] .cursed-toggle:has(input:checked) img.icon {
+  filter: invert(1);
+}
+
+.range-popover {
+  position: relative;
+}
+
+.range-popover[open] > summary {
+  background: var(--dark-fg);
+  border-color: var(--dark-fg);
+  color: var(--dark-bg);
+}
+
+.range-fields {
+  align-items: center;
+  background: var(--light-bg);
+  border: 1px solid var(--light-fg);
+  border-radius: 4px;
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+  margin-top: 0.25rem;
+  padding: 0.6rem;
+  position: absolute;
+  right: 0;
+  top: 100%;
+  z-index: 5;
+}
+
+.range-fields label {
+  align-items: center;
+  display: flex;
+  gap: 0.4rem;
+}
+
+.range-fields input[type=number] {
+  background: var(--dark-bg);
+  border: 1px solid var(--light-fg);
+  border-radius: 3px;
+  color: var(--dark-fg);
+  font: inherit;
+  padding: 0.2rem 0.4rem;
+  width: 8rem;
+}
+
+dd:has(.copy-btn) {
+  white-space: nowrap;
+}
+
+.copy-btn {
+  background: none;
+  border: none;
+  cursor: pointer;
+  flex-shrink: 0;
+  margin-left: 0.5em;
+  padding: 0;
+  vertical-align: middle;
+}
+
+.copy-btn img.icon {
+  height: 0.9rem;
+  opacity: 0.5;
+  transition: opacity 150ms;
+  width: 0.9rem;
+}
+
+.copy-btn:hover img.icon,
+.copy-btn.copied img.icon {
+  opacity: 1;
+}
+
+:root[data-theme=dark] {
+  --dark-bg: #131516;
+  --light-bg: #000000;
+  --dark-fg: #ffffff;
+  --light-fg: #ffffff;
+}
+
+:root[data-theme=dark] img.icon {
+  filter: brightness(0) invert(1);
+}
+
+:root[data-theme=dark] nav {
+  border-bottom: 1px solid #333;
+}
+
+:root[data-theme=light] {
+  --dark-bg: #ffffff;
+  --light-bg: #ffffff;
+  --dark-fg: #000000;
+  --light-fg: #000000;
+}
+
+:root[data-theme=light] img.icon {
+  filter: brightness(0);
+}
+
+:root[data-theme=light] nav {
+  border-bottom: 1px solid #ddd;
+}
+
+:root[data-theme=light] input[type=text] {
+  background-color: #f0f0f0;
+  border-color: #cccccc;
+}
+
+:root[data-theme=light] .gallery-view-btn.active {
+  background: none;
+  border-color: #000;
+}
+

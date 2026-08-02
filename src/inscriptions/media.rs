@@ -165,6 +165,151 @@ impl Media {
 
     Ok(())
   }
+
+  /// Sniff the first bytes of an inscription body and return the most specific
+  /// `Media` variant whose magic-byte matcher accepts the head, or `None` if
+  /// no matcher recognises the bytes.
+  ///
+  /// Used to rescue inscriptions whose stored `content_type` is wrong — most
+  /// commonly `application/octet-stream` for a payload that is actually a glTF
+  /// model, PNG image, MP4 video, and so on. The on-chain state is never
+  /// modified; this only changes which preview template the server chooses at
+  /// display time.
+  ///
+  /// The caller must hand in already-decompressed bytes. The full pipeline
+  /// (including the brotli decode step for inscriptions with
+  /// `content_encoding == "br"`) lives in `Inscription::sniffed_media`.
+  pub(crate) fn from_body_head(head: &[u8]) -> Option<Self> {
+    Self::SNIFF_TABLE
+      .iter()
+      .find_map(|(matches, media)| matches(head).then_some(*media))
+  }
+
+  /// Magic-byte signatures consulted by `Self::from_body_head`.
+  ///
+  /// Each row is `(matcher, Media)`. Matchers must be cheap (no allocation,
+  /// no I/O) and decisive — the table returns on the first accepting matcher.
+  ///
+  /// To add a new format: define a `matches_*` function below and append a row.
+  /// Two invariants the table relies on:
+  ///
+  ///   - A matcher should only confirm formats whose `Media` variant is in
+  ///     fact rendered by the preview templates. The MP4 matcher, for example,
+  ///     brand-filters to exclude HEIC, HEIF, and QuickTime — bytes whose
+  ///     ISO-BMFF header would otherwise fool a naive `ftyp` check but which
+  ///     the project does not promise to render as video.
+  ///   - Nothing here should promote to `Media::Iframe`. Auto-upgrading
+  ///     unknown-tagged HTML or SVG into an iframe would expand the renderable
+  ///     surface beyond the on-chain content-type contract, which carries
+  ///     CSP and sandbox implications.
+  const SNIFF_TABLE: &'static [(fn(&[u8]) -> bool, Self)] = &[
+    (Self::matches_glb,       Self::Model),
+    (Self::matches_gltf_json, Self::Model),
+    (Self::matches_png,       Self::Image(Pixelated)),
+    (Self::matches_jpeg,      Self::Image(Pixelated)),
+    (Self::matches_gif,       Self::Image(Pixelated)),
+    (Self::matches_webp,      Self::Image(Pixelated)),
+    (Self::matches_mp4,       Self::Video),
+    (Self::matches_ogg,       Self::Audio),
+    (Self::matches_wav,       Self::Audio),
+    (Self::matches_flac,      Self::Audio),
+    (Self::matches_pdf,       Self::Pdf),
+  ];
+
+  /// glTF binary (GLB). The four-byte magic `glTF` is followed on disk by a
+  /// little-endian version and total length, but those fields are not needed
+  /// for the sniff.
+  fn matches_glb(head: &[u8]) -> bool {
+    head.starts_with(b"glTF")
+  }
+
+  /// glTF 2.0 JSON. Verifies a leading `{` (after optional ASCII whitespace)
+  /// and the presence of both `"asset"` and `"version"` somewhere in the
+  /// head, which the spec requires of every conforming glTF document.
+  fn matches_gltf_json(head: &[u8]) -> bool {
+    let trimmed = head
+      .iter()
+      .position(|b| !b.is_ascii_whitespace())
+      .map(|i| &head[i..])
+      .unwrap_or(&[]);
+    if !trimmed.starts_with(b"{") {
+      return false;
+    }
+    fn contains(haystack: &[u8], needle: &[u8]) -> bool {
+      haystack.windows(needle.len()).any(|w| w == needle)
+    }
+    contains(head, b"\"asset\"") && contains(head, b"\"version\"")
+  }
+
+  /// PNG. Eight-byte fixed signature. APNG shares it and is rendered as
+  /// `Image(Pixelated)` for consistency with the project's MIME table.
+  fn matches_png(head: &[u8]) -> bool {
+    head.starts_with(b"\x89PNG\r\n\x1a\n")
+  }
+
+  /// JPEG. Three-byte SOI marker (`\xff\xd8\xff`) followed by another segment
+  /// marker (JFIF `\xe0`, Exif `\xe1`, DQT `\xdb`, Adobe APP14 `\xee`, ...),
+  /// all of which are valid fourth bytes.
+  fn matches_jpeg(head: &[u8]) -> bool {
+    head.starts_with(b"\xff\xd8\xff")
+  }
+
+  /// GIF, either GIF87a or GIF89a.
+  fn matches_gif(head: &[u8]) -> bool {
+    head.starts_with(b"GIF87a") || head.starts_with(b"GIF89a")
+  }
+
+  /// WebP. Bytes 0..4 = `RIFF`, bytes 8..12 = `WEBP`. The FourCC at offset 8
+  /// is what distinguishes WebP from sibling RIFF containers like WAV or AVI.
+  fn matches_webp(head: &[u8]) -> bool {
+    head.len() >= 12 && &head[0..4] == b"RIFF" && &head[8..12] == b"WEBP"
+  }
+
+  /// MP4 (ISO Base Media File Format), constrained to brands the project will
+  /// actually render. Requires `ftyp` at offset 4 and a brand in the set
+  /// `{mp4*, iso*, avc1, M4V , dash}`.
+  ///
+  /// Other ISO-BMFF brands — notably HEIC and HEIF (image, not video) and
+  /// QuickTime (`qt  `, a codec the renderer does not claim to support) — are
+  /// deliberately rejected so they fall through to `PreviewUnknownHtml`
+  /// rather than being mis-promoted to `Media::Video`.
+  fn matches_mp4(head: &[u8]) -> bool {
+    if head.len() < 12 || &head[4..8] != b"ftyp" {
+      return false;
+    }
+    let brand = &head[8..12];
+    brand.starts_with(b"mp4")
+      || brand.starts_with(b"iso")
+      || brand == b"avc1"
+      || brand == b"M4V "
+      || brand == b"dash"
+  }
+
+  /// Ogg container. Always promoted to `Media::Audio` because the project's
+  /// MIME table declares only audio Ogg variants. Theora-in-Ogg would
+  /// mis-route here, but is not relevant to inscriptions in practice.
+  fn matches_ogg(head: &[u8]) -> bool {
+    head.starts_with(b"OggS")
+  }
+
+  /// WAV. Bytes 0..4 = `RIFF`, bytes 8..12 = `WAVE`. Shares the RIFF container
+  /// with WebP and AVI; the FourCC at offset 8 disambiguates.
+  fn matches_wav(head: &[u8]) -> bool {
+    head.len() >= 12 && &head[0..4] == b"RIFF" && &head[8..12] == b"WAVE"
+  }
+
+  /// FLAC. Four-byte magic `fLaC` at offset 0. Files prefixed with an ID3v2
+  /// header (rare for FLAC but permitted by some encoders) are not handled
+  /// here; they would have to be rescued via a separate ID3 matcher.
+  fn matches_flac(head: &[u8]) -> bool {
+    head.starts_with(b"fLaC")
+  }
+
+  /// PDF. Five-byte signature `%PDF-`; the version digits follow (`1.4`,
+  /// `1.7`, `2.0`, ...).
+  fn matches_pdf(head: &[u8]) -> bool {
+    head.starts_with(b"%PDF-")
+  }
 }
 
 impl FromStr for Media {
@@ -230,5 +375,146 @@ mod tests {
         assert!(set.insert(extension), "duplicate extension `{extension}`");
       }
     }
+  }
+
+  #[test]
+  fn sniff_glb_magic() {
+    let mut body = b"glTF".to_vec();
+    body.extend_from_slice(&[2, 0, 0, 0]);
+    assert_eq!(Media::from_body_head(&body), Some(Media::Model));
+  }
+
+  #[test]
+  fn sniff_gltf_json() {
+    let body = br#"{
+  "asset": { "version": "2.0" },
+  "scene": 0
+}"#;
+    assert_eq!(Media::from_body_head(body), Some(Media::Model));
+  }
+
+  #[test]
+  fn sniff_gltf_json_with_leading_whitespace() {
+    let body = b"  \n  {\"asset\":{\"version\":\"2.1\"}}";
+    assert_eq!(Media::from_body_head(body), Some(Media::Model));
+  }
+
+  #[test]
+  fn sniff_random_bytes_stays_unknown() {
+    let body = [0xde, 0xad, 0xbe, 0xef, 0x00, 0x01, 0x02, 0x03];
+    assert_eq!(Media::from_body_head(&body), None);
+  }
+
+  #[test]
+  fn sniff_json_without_asset_is_not_gltf() {
+    let body = br#"{"foo":"bar"}"#;
+    assert_eq!(Media::from_body_head(body), None);
+  }
+
+  #[test]
+  fn sniff_png() {
+    let body = b"\x89PNG\r\n\x1a\n\x00\x00\x00\rIHDR";
+    assert_eq!(
+      Media::from_body_head(body),
+      Some(Media::Image(ImageRendering::Pixelated))
+    );
+  }
+
+  #[test]
+  fn sniff_jpeg() {
+    let body = b"\xff\xd8\xff\xe0\x00\x10JFIF\x00\x01";
+    assert_eq!(
+      Media::from_body_head(body),
+      Some(Media::Image(ImageRendering::Pixelated))
+    );
+  }
+
+  #[test]
+  fn sniff_gif() {
+    assert_eq!(
+      Media::from_body_head(b"GIF89a\x10\x00\x10\x00"),
+      Some(Media::Image(ImageRendering::Pixelated))
+    );
+    assert_eq!(
+      Media::from_body_head(b"GIF87a\x10\x00\x10\x00"),
+      Some(Media::Image(ImageRendering::Pixelated))
+    );
+  }
+
+  #[test]
+  fn sniff_webp() {
+    let mut body = b"RIFF".to_vec();
+    body.extend_from_slice(&[0, 0, 0, 0]);
+    body.extend_from_slice(b"WEBPVP8 ");
+    assert_eq!(
+      Media::from_body_head(&body),
+      Some(Media::Image(ImageRendering::Pixelated))
+    );
+  }
+
+  #[test]
+  fn sniff_mp4() {
+    let mut body = vec![0, 0, 0, 0x20];
+    body.extend_from_slice(b"ftypisom");
+    body.extend_from_slice(&[0, 0, 0, 0]);
+    assert_eq!(Media::from_body_head(&body), Some(Media::Video));
+  }
+
+  #[test]
+  fn sniff_mp4_mp42_brand() {
+    let mut body = vec![0, 0, 0, 0x20];
+    body.extend_from_slice(b"ftypmp42");
+    body.extend_from_slice(&[0, 0, 0, 0]);
+    assert_eq!(Media::from_body_head(&body), Some(Media::Video));
+  }
+
+  #[test]
+  fn sniff_mp4_rejects_heic() {
+    let mut body = vec![0, 0, 0, 0x20];
+    body.extend_from_slice(b"ftypheic");
+    body.extend_from_slice(&[0, 0, 0, 0]);
+    assert_eq!(Media::from_body_head(&body), None);
+  }
+
+  #[test]
+  fn sniff_mp4_rejects_quicktime() {
+    let mut body = vec![0, 0, 0, 0x20];
+    body.extend_from_slice(b"ftypqt  ");
+    body.extend_from_slice(&[0, 0, 0, 0]);
+    assert_eq!(Media::from_body_head(&body), None);
+  }
+
+  #[test]
+  fn sniff_ogg() {
+    let body = b"OggS\x00\x02\x00\x00\x00\x00\x00\x00";
+    assert_eq!(Media::from_body_head(body), Some(Media::Audio));
+  }
+
+  #[test]
+  fn sniff_wav() {
+    let mut body = b"RIFF".to_vec();
+    body.extend_from_slice(&[0, 0, 0, 0]);
+    body.extend_from_slice(b"WAVEfmt ");
+    assert_eq!(Media::from_body_head(&body), Some(Media::Audio));
+  }
+
+  #[test]
+  fn sniff_flac() {
+    let body = b"fLaC\x00\x00\x00\x22";
+    assert_eq!(Media::from_body_head(body), Some(Media::Audio));
+  }
+
+  #[test]
+  fn sniff_riff_avi_is_unknown() {
+    let mut body = b"RIFF".to_vec();
+    body.extend_from_slice(&[0, 0, 0, 0]);
+    body.extend_from_slice(b"AVI LIST");
+    assert_eq!(Media::from_body_head(&body), None);
+  }
+
+  #[test]
+  fn sniff_pdf() {
+    let body = b"%PDF-1.4\n%\xe2\xe3\xcf\xd3";
+    assert_eq!(Media::from_body_head(body), Some(Media::Pdf));
   }
 }

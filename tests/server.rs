@@ -250,11 +250,13 @@ fn inscription_page() {
     format!("/inscription/{inscription}"),
     Chain::Mainnet,
     InscriptionHtml {
+      breadcrumbs: Vec::new(),
       chain: Chain::Mainnet,
       charms: 0,
       child_count: 0,
       children: Vec::new(),
       fee: 138,
+      gallery_media: Vec::new(),
       height: 2,
       inscription: Inscription {
         content_type: Some("text/plain;charset=utf-8".as_bytes().into()),

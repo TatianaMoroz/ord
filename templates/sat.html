@@ -25,8 +25,8 @@
 %% if !self.inscriptions.is_empty() {
   <dt>inscriptions</dt>
   <dd class=thumbnails>
-%% for inscription in &self.inscriptions {
-    {{Iframe::thumbnail(*inscription)}}
+%% for (inscription, media) in &self.inscriptions {
+    {{Iframe::thumbnail(*inscription, *media)}}
 %% }
   </dd>
 %% }

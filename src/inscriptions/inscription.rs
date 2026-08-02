@@ -244,6 +244,55 @@ impl Inscription {
     content_type.parse().unwrap_or(Media::Unknown)
   }
 
+  /// Like `Self::media`, but if the result is `Media::Unknown` and the body
+  /// is non-empty, peek at the first 4 KiB of the body (transparently
+  /// decoding brotli when `content_encoding == "br"`) and try to upgrade the
+  /// classification via `Media::from_body_head`.
+  ///
+  /// This is the entry point the `/preview/<id>` handler uses to rescue
+  /// inscriptions that were inscribed with the wrong (or missing)
+  /// `content_type` tag — most commonly `application/octet-stream` for what
+  /// is actually a glTF, PNG, JPEG, MP4, etc.
+  ///
+  /// On-chain state is untouched; only the preview-template choice changes.
+  /// The `/content/<id>` endpoint continues to serve the original on-chain
+  /// `Content-Type` header, leaving downstream clients (`<model-viewer>`,
+  /// `<img>`, `<video>`) to do their own content sniffing if they wish.
+  /// Embed, thumbnail, and oEmbed paths are not covered by this method.
+  pub fn sniffed_media(&self) -> Media {
+    let media = self.media();
+    if !matches!(media, Media::Unknown) {
+      return media;
+    }
+    let Some(body) = self.body() else { return media };
+    let head = self.sniff_head(body);
+    Media::from_body_head(&head).unwrap_or(Media::Unknown)
+  }
+
+  /// Return up to 4 KiB from the start of the body for magic-byte inspection.
+  ///
+  /// When `content_encoding == "br"` the body is brotli-decoded with a hard
+  /// `.take(4 KiB)` cap, so a maliciously crafted small compressed payload
+  /// cannot fan out into a multi-gigabyte decompression — the same DoS shape
+  /// that the server's `--decompress` flag warns about.
+  ///
+  /// Encodings other than brotli are not decoded; the raw bytes are passed
+  /// through, and will simply fail to match any magic-byte rule.
+  fn sniff_head(&self, body: &[u8]) -> Vec<u8> {
+    const SNIFF_BYTES: usize = 4096;
+    match self.content_encoding.as_deref() {
+      Some(b"br") => {
+        use std::io::Read;
+        let mut head = Vec::with_capacity(SNIFF_BYTES);
+        let _ = brotli::Decompressor::new(body, SNIFF_BYTES)
+          .take(SNIFF_BYTES as u64)
+          .read_to_end(&mut head);
+        head
+      }
+      _ => body[..body.len().min(SNIFF_BYTES)].to_vec(),
+    }
+  }
+
   pub fn body(&self) -> Option<&[u8]> {
     Some(self.body.as_ref()?)
   }
@@ -1414,5 +1463,72 @@ mod tests {
       .properties_cbor()
       .is_none()
     );
+  }
+
+  #[test]
+  fn sniffed_media_passes_through_known_content_type() {
+    let i = Inscription {
+      content_type: Some(b"model/gltf+json".into()),
+      body: Some(b"not even valid gltf".to_vec()),
+      ..default()
+    };
+    assert_eq!(i.sniffed_media(), Media::Model);
+  }
+
+  #[test]
+  fn sniffed_media_upgrades_octet_stream_glb() {
+    let mut body = b"glTF".to_vec();
+    body.extend_from_slice(&[2, 0, 0, 0, 0, 0, 0, 0]);
+    let i = Inscription {
+      content_type: Some(b"application/octet-stream".into()),
+      body: Some(body),
+      ..default()
+    };
+    assert_eq!(i.sniffed_media(), Media::Model);
+  }
+
+  #[test]
+  fn sniffed_media_upgrades_octet_stream_gltf_json() {
+    let i = Inscription {
+      content_type: Some(b"application/octet-stream".into()),
+      body: Some(br#"{"asset":{"version":"2.0"},"scene":0}"#.to_vec()),
+      ..default()
+    };
+    assert_eq!(i.sniffed_media(), Media::Model);
+  }
+
+  #[test]
+  fn sniffed_media_upgrades_brotli_compressed_gltf() {
+    let gltf = br#"{"asset":{"version":"2.0"},"scene":0,"scenes":[{"nodes":[]}],"nodes":[]}"#;
+    let mut compressed = Vec::new();
+    CompressorWriter::new(&mut compressed, BROTLI_BUFFER_SIZE, 11, 22)
+      .write_all(gltf)
+      .unwrap();
+
+    let i = Inscription {
+      content_type: Some(b"application/octet-stream".into()),
+      content_encoding: Some(b"br".to_vec()),
+      body: Some(compressed),
+      ..default()
+    };
+    assert_eq!(i.sniffed_media(), Media::Model);
+  }
+
+  #[test]
+  fn sniffed_media_leaves_random_bytes_unknown() {
+    let i = Inscription {
+      content_type: Some(b"application/octet-stream".into()),
+      body: Some(vec![0xde, 0xad, 0xbe, 0xef]),
+      ..default()
+    };
+    assert_eq!(i.sniffed_media(), Media::Unknown);
+  }
+
+  #[test]
+  fn sniffed_media_no_body_is_unknown() {
+    let i = Inscription {
+      ..default()
+    };
+    assert_eq!(i.sniffed_media(), Media::Unknown);
   }
 }

@@ -5,6 +5,8 @@ pub struct BlocksHtml {
   pub last: u32,
   pub blocks: Vec<BlockHash>,
   pub featured_blocks: BTreeMap<BlockHash, Vec<InscriptionId>>,
+  #[serde(skip)]
+  pub featured_medias: BTreeMap<BlockHash, Vec<Option<Media>>>,
 }
 
 impl BlocksHtml {
@@ -20,6 +22,7 @@ impl BlocksHtml {
         .unwrap_or(0),
       blocks: blocks.into_iter().map(|(_, hash)| hash).collect(),
       featured_blocks,
+      featured_medias: BTreeMap::new(),
     }
   }
 }
